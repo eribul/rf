@@ -31,10 +31,7 @@ rdata <- function(cols = 1e3, rows = 1e3) {
 rf <- function(dat, trees = 1e2) {
   ranger::ranger(
     ...1 ~ ., dat, trees,
-    importance = "impurity_corrected",
-    case.weights = sample(0:1, nrow(dat), TRUE, c(.1, .9)),
-    holdout = TRUE,
-    oob.error = TRUE
+    importance = "impurity_corrected"
   )
 }
 
