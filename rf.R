@@ -1,5 +1,5 @@
 library(tidyverse)
-library(tidymodels)
+library(ranger)
 library(furrr)
 
 set.seed(123)
@@ -21,18 +21,22 @@ rdata <- function(cols = 1e3, rows = 1e3) {
   X <- sapply(funs, exec, rows)
   Y <- X %*% rnorm(cols) # linear comb with random coefs
 
-  cbind(Y, X[, seq_len(cols - 3)]) %>% as_tibble()
+  cbind(Y, X[, seq_len(cols - 3)]) %>%
+    as_tibble(.name_repair = "unique")
 }
 
 #' Fit a random forrest model
 #' @param dat data frame
 #' @param trees number of trees in the forrest
-rf <- function(dat, trees = 1e3) {
-  rand_forest(mode = "regression", mtry = .preds(), trees = trees) %>%
-  set_engine("ranger", importance = 'impurity') %>%
-  fit(V1 ~ ., data = dat)
+rf <- function(dat, trees = 1e2) {
+  ranger::ranger(
+    ...1 ~ ., dat, trees,
+    importance = "impurity_corrected",
+    case.weights = sample(0:1, nrow(dat), TRUE, c(.1, .9)),
+    holdout = TRUE,
+    oob.error = TRUE
+  )
 }
-
 
 
 # Data management and analysis --------------------------------------------
@@ -42,10 +46,20 @@ rf <- function(dat, trees = 1e3) {
 rf_all <-
   tibble(p = seq(5, 100, 10)) %>%
   mutate(
-    data    = future_map(p, rdata),
-    rf      = future_map(data, rf),
-    obspred = map2(data, rf, ~ bind_cols(obs = .x$V1, predict.model_fit(.y, .x))),
-    metr    = map(obspred, metrics, obs, .pred)
+    data  = suppressMessages(future_map(p, rdata)),
+    rf    = map(data, rf),
+
+    # Overall out of bag prediction error (MSE)
+    MSE = map_dbl(rf, "prediction.error"),
+
+    # variable importance
+    imp   = map2(rf, data, ~ importance_pvalues(
+      .x, "altman", formula = ...1 ~ .,data = .y, num.permutations = 10)),
+
+    # Which variables should be included (according to p-values)
+    keep = map(imp, ~ rownames(.)[.[, "pvalue"] < 0.2]),
+    n_keep = map_int(keep, length), # no of included vars
+    n_prop = map2_dbl(n_keep, p,  ~ .x / (.y - 3)) # proportion of included
   )
 
 
@@ -53,15 +67,11 @@ rf_all <-
 
 
 # Make plot
-unnest(rf_all, metr) %>%
-  ggplot(aes(p, .estimate)) +
+rf_all %>%
+  gather("key", "value", MSE, n_prop) %>%
+  ggplot(aes(p, value)) +
   geom_line() +
-  facet_wrap(~ .metric, ncol = 1, scales = "free_y") +
-  theme_minimal() +
-  labs(
-    title = "Increasing error with nunmber of parameters",
-    x     = "No of independent variables",
-    y     = "Estimated error metric"
-  )
+  facet_wrap(~ key, ncol = 1, scales = "free_y") +
+  theme_minimal()
 
-ggsave("metrics.png")
+ggsave("performance.png")
