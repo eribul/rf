@@ -1,11 +1,10 @@
 # Random forrest (Grupparbete 1 inom "Big data"-kurs)
 
-Bara ett litet utkast"! Se `rf.R` för lite kod och `.png`-filen för en liten illustration. 
+Se `rf.R` för lite kod och `.png`-filen för en liten illustration. 
 
-Hjälpfunktoinen `rdata` kan användas för olika storlekar av `n` och `p`. Har nu bara testat med fixt `n` och variabelt `p`. 
+Hjälpfunktoinen `rdata` kan användas för olika storlekar av `n` och `p`. 
 Endast okorrelerade X-variabler än så länge (dock korrelerade mot Y)!
-Jämförelser av standardmåtten enligt `yardstick::metrics` (bör kanske tänka till vad som är relevant). Endast regression (men bör vara lätt ändra till klassifikatoin också ev). 
-Har inte tittat på variabelselektion alls!
+Endast regression (men bör vara lätt ändra till klassifikatoin också ev). 
 
 
 ## Frågan

@@ -41,13 +41,18 @@ rf <- function(dat, trees = 1e2) {
 
 # Data, predictions and metrics for increasingly large datasets
 rf_all <-
-  tibble(p = seq(5, 100, 10)) %>%
+  tibble(
+    p = seq(10, 1e3, 1e2),
+    n = seq(10, 1e3, 1e2)
+  ) %>%
+  expand(n, p) %>%
   mutate(
     data  = suppressMessages(future_map(p, rdata)),
     rf    = map(data, rf),
 
     # Overall out of bag prediction error (MSE)
     MSE = map_dbl(rf, "prediction.error"),
+    r.squared = map_dbl(rf, "r.squared"),
 
     # variable importance
     imp   = map2(rf, data, ~ importance_pvalues(
@@ -59,16 +64,23 @@ rf_all <-
     n_prop = map2_dbl(n_keep, p,  ~ .x / (.y - 3)) # proportion of included
   )
 
+# Keep only summary data for presentation
+rf_summary <-
+  rf_all %>%
+  gather("key", "value", MSE, n_prop, r.squared) %>%
+  select(n, p, key, value)
+
+save(rf_summary, file = "data.RData")
 
 # Results -----------------------------------------------------------------
 
 
 # Make plot
-rf_all %>%
-  gather("key", "value", MSE, n_prop) %>%
-  ggplot(aes(p, value)) +
+rf_summary %>%
+  ggplot(aes(p, value, group = n, color = n)) +
   geom_line() +
   facet_wrap(~ key, ncol = 1, scales = "free_y") +
-  theme_minimal()
+  theme_minimal() +
+  theme(legend.position = c(0.1, .9))
 
 ggsave("performance.png")
