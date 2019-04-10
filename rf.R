@@ -16,13 +16,20 @@ rdata <- function(cols = 1e3, rows = 1e3) {
   stopifnot(cols > 3)
 
   # Random functions chosen randomly to generate random data
-  funs  <- sample(list(rnorm, rexp, runif), cols, replace = TRUE)
+  # First name of functions (for presentation), then functions themselves
+  funs_s  <- sample(c("rnorm", "rexp", "runif"), cols, replace = TRUE)
+  funs    <- lapply(funs_s, get)
 
   X <- sapply(funs, exec, rows)
-  Y <- X %*% rnorm(cols) # linear comb with random coefs
+  b <- rnorm(cols)
+  Y <- X %*% b # linear comb with random coefs
 
-  cbind(Y, X[, seq_len(cols - 3)]) %>%
-    as_tibble(.name_repair = "unique")
+  structure(
+    cbind(Y, X[, seq_len(cols - 3)]) %>%
+    as_tibble(.name_repair = "unique"),
+    funs = funs_s,
+    b = b
+  )
 }
 
 #' Fit a random forrest model
@@ -59,9 +66,25 @@ rf_all <-
       .x, "altman", formula = ...1 ~ .,data = .y, num.permutations = 10)),
 
     # Which variables should be included (according to p-values)
-    keep = map(imp, ~ rownames(.)[.[, "pvalue"] < 0.2]),
-    n_keep = map_int(keep, length), # no of included vars
+    keep_i = map(imp, ~ .[, "pvalue"] < 0.2),
+    n_keep = map_int(keep_i, sum), # no of included vars
     n_prop = map2_dbl(n_keep, p,  ~ .x / (.y - 3)) # proportion of included
+  )
+
+# Identify kept/dropped columns
+col_types <-
+  rf_all %>%
+  transmute(
+    n, p,
+    # Which variables got identified?
+    keep_type = map2(data, keep_i, ~ attr(.x, "funs")[.y]),
+    drop_type = map2(data, keep_i, ~ attr(.x, "funs")[!.y]),
+    keep_b    = map2(data, keep_i, ~ attr(.x, "b")[.y]),
+    drop_b    = map2(data, keep_i, ~ attr(.x, "b")[!.y]),
+
+    keep_b_mean = map_dbl(keep_b, mean),
+    drop_b_mean = map_dbl(drop_b, mean),
+    prop_b_kept = keep_b_mean / drop_b_mean
   )
 
 # Keep only summary data for presentation
@@ -84,3 +107,16 @@ rf_summary %>%
   theme(legend.position = c(0.1, .9))
 
 ggsave("performance.png")
+
+
+# Kept coefficients vs dropped
+col_types %>%
+  ggplot(aes(prop_b_kept)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = 1), col = "red") +
+  theme_minimal()
+
+ggsave("prop_b_kept.png")
+
+# No differnece (but shouls also consider type of variable or scale them!)
+t.test(col_types$prop_b_kept)
